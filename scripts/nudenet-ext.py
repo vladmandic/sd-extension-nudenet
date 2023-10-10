@@ -25,7 +25,7 @@ class Script(scripts.Script):
             return
         if nudenet.detector is None:
             nudenet.detector = nudenet.NudeDetector()
-        nudes = nudenet.detector.censor(image=pp.image, method=method, min_score=threshold, censor=['female breast exposed', 'female genitalia exposed'])
+        nudes = nudenet.detector.censor(image=pp.image, method=method, min_score=threshold, censor=censor)
         if len(censor) > 0:
             pp.image = nudes.output
         p.extra_generation_params["NudeNet"] = '; '.join([f'{d["label"]}:{d["score"]}' for d in nudes.detections])
