@@ -1,2 +1,5 @@
-# sd-extension-nudenet
-NudeNet extension for SD.Next
+# NudeNet extension for SD.Next
+
+README TBD
+
+![example](naked-twins_censored.jpg)
