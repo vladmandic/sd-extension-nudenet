@@ -4,6 +4,7 @@ import os
 import sys
 import math
 import time
+import logging
 import cv2
 import numpy as np
 import onnxruntime
@@ -11,28 +12,28 @@ from PIL import Image
 from onnxruntime.capi import _pybind_state as C
 
 
+log = logging.getLogger("sd")
 session = None
 detector = None
-
-
+default_overlay = os.path.join(os.path.dirname(__file__), 'censored.png')
 labels = [
-    "female genitalia",
-    "female face",
-    "buttocks exposed",
-    "female breast exposed",
-    "female genitalia exposed",
-    "male breast exposed",
-    "anus exposed",
-    "feed exposed",
-    "bellt",
+    "female-private-area",
+    "female-face",
+    "buttocks-bare",
+    "female-breast-bare",
+    "female-vagina",
+    "male-breast-bare",
+    "anus-bare",
+    "feed-bare",
+    "belly",
     "feet",
     "armpits",
-    "armpits exposed",
-    "male face",
-    "belly exposed",
-    "male genitalia exposed",
-    "anus",
-    "female breast",
+    "armpits-bare",
+    "male-face",
+    "belly-bare",
+    "male-penis",
+    "anus-area",
+    "female-breast",
     "buttocks",
 ]
 
@@ -126,13 +127,45 @@ class NudeDetector:
                 cv2.rectangle(image, (startX, startY), (endX, endY), (B, G, R), -1)
         return image
 
+    def overlay(self, background, foreground, x_offset=None, y_offset=None):
+        bg_h, bg_w, bg_channels = background.shape
+        fg_h, fg_w, fg_channels = foreground.shape
+        if bg_channels != 3:
+            log.error(f'NudeNet input image: channels={bg_channels} must be RGB')
+            return background
+        if fg_channels < 4: # make sure that overlay is rgba
+            log.warning('NudeNet overlay image does not have alpha channel')
+            foreground = cv2.cvtColor(foreground, cv2.COLOR_RGB2RGBA)
+            foreground[:, :, 3] = cv2.cvtColor(foreground, cv2.COLOR_BGR2GRAY)
+            fg_h, fg_w, fg_channels = foreground.shape
+        if x_offset is None: # center by default
+            x_offset = (bg_w - fg_w) // 2
+        if y_offset is None:
+            y_offset = (bg_h - fg_h) // 2
+        w = min(fg_w, bg_w, fg_w + x_offset, bg_w - x_offset)
+        h = min(fg_h, bg_h, fg_h + y_offset, bg_h - y_offset)
+        if w < 1 or h < 1:
+            return background
+        bg_x = max(0, x_offset) # clip foreground and background images to the overlapping regions
+        bg_y = max(0, y_offset)
+        fg_x = max(0, x_offset * -1)
+        fg_y = max(0, y_offset * -1)
+        foreground = foreground[fg_y:fg_y + h, fg_x:fg_x + w]
+        background_subsection = background[bg_y:bg_y + h, bg_x:bg_x + w]
+        foreground_colors = foreground[:, :, :3] # separate alpha and color channels from the foreground image
+        alpha_channel = foreground[:, :, 3] / 255  # 0-255 => 0.0-1.0
+        alpha_mask = alpha_mask = alpha_channel[:,:,np.newaxis] # construct an alpha_mask that matches the image shape
+        composite = background_subsection * (1 - alpha_mask) + foreground_colors * alpha_mask # combine the background with the overlay image weighted by alpha
+        background[bg_y:bg_y + h, bg_x:bg_x + w] = composite # overwrite the section of the background image that has been updated
+        return background
+
     def detect(self, image, min_score):
         preprocessed_image, resize_factor, pad_left, pad_top = self.read_image(image, self.input_width)
         outputs = session.run(None, {self.input_name: preprocessed_image})
         res = self.postprocess(outputs, resize_factor, pad_left, pad_top, min_score)
         return res
 
-    def censor(self, image, min_score=0.2, censor=None, method='pixelate'):
+    def censor(self, image, min_score=0.2, censor=None, method='pixelate', blocks=3, overlay=None):
         if type(image) == str:
             image = cv2.imread(image) # input is image path
         else:
@@ -142,38 +175,52 @@ class NudeDetector:
         nude.detections = self.detect(image, min_score)
         nude.censored = [d for d in nude.detections if d["label"] in nude.censor]
         for d in nude.censored:
+            # try:
             box = d["box"]
             x, y, w, h = box[0], box[1], box[2], box[3]
             area = image[y: y+h, x: x+w]
             if method == 'pixelate':
-                area = self.pixelate(image[y: y+h, x: x+w], blocks=3)
+                image[y: y+h, x: x+w] = self.pixelate(area, blocks=blocks)
             elif method == 'blur':
-                area = cv2.blur(image[y: y+h, x: x+w], (23, 23))
+                image[y: y+h, x: x+w] = cv2.blur(area, (blocks, blocks))
+            elif method == 'gaussian blur':
+                image[y: y+h, x: x+w] = cv2.GaussianBlur(area, (blocks, blocks), 0)
+            elif method == 'median blur':
+                image[y: y+h, x: x+w] = cv2.medianBlur(area, blocks)
             elif method == 'block':
-                area = (0, 0, 0)
-            image[y: y+h, x: x+w] = area
+                image[y: y+h, x: x+w] = (0, 0, 0)
+            elif method == 'image':
+                if overlay is None or overlay == '':
+                    overlay = default_overlay
+                if not os.path.exists(overlay):
+                    log.error(f'NudeNet overlay image not found: file={overlay}')
+                    overlay = default_overlay
+                pasty = cv2.imread(overlay, cv2.IMREAD_UNCHANGED)
+                pasty = cv2.resize(pasty, (w, h))
+                image = self.overlay(image, pasty, x, y)
+            # except Exception as e:
+            #    log.error(f'NudeNet censor function: {e}')
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         nude.output = Image.fromarray(image)
         return nude
 
 
 def cli():
-    from rich import print # pylint: disable=redefined-builtin, import-outside-toplevel
     global detector # pylint: disable=global-statement
     sys.argv.pop(0)
     if len(sys.argv) == 0:
-        print('nudenet:', 'no files specified')
+        log.error('nudenet: no files specified')
     for fn in sys.argv:
         t0 = time.time()
         pil = Image.open(fn)
         if detector is None:
             detector = NudeDetector()
-        nudes = detector.censor(image=pil, censor=['female breast exposed', 'female genitalia exposed'], min_score=0.2, method='pixelate')
+        nudes = detector.censor(image=pil, censor=['female breast bare', 'female genitalia bare'], min_score=0.2, method='pixelate')
         t1 = time.time()
-        print(vars(nudes))
+        log.info(vars(nudes))
         f = os.path.splitext(fn)[0] + '_censored.jpg'
         nudes.output.save(f)
-        print(f'nudenet: input={fn} output={f} time={t1-t0:.2f}s')
+        log.info(f'nudenet: input={fn} output={f} time={t1-t0:.2f}s')
 
 
 if __name__ == "__main__":
