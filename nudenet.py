@@ -36,6 +36,13 @@ labels = [
     "female-breast",
     "buttocks",
 ]
+nsfw = [
+    "buttocks-bare",
+    "female-breast-bare",
+    "anus-bare",
+    "female-vagina",
+    "male-penis",
+]
 
 
 class NudeResult:

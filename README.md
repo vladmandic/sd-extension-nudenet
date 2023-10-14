@@ -9,15 +9,16 @@
 - Exposed or unexposed:  
   e.g. *breast or breast-bare*
 - Add information to image metadata
-  e.g. *"NudeNet: female-face:0.86; belly:0.54"*
+  e.g. *"NudeNet: female-face:0.86; belly:0.54"*, *NSFW: True*  
 - Censor as desired (or not):
   - blur *(adjust block size for effect)*
   - pixelate *(adjust block size for effect)*
-  - cover with pasty :)  
+  - cover with pasty (overlay image) :)  
     *note: RGBA image is recommended for overlays*  
 - Use as extension from UI or via CLI  
   `python nudenet.py --help`  
 - Adjustable sensitivity
+- Can be used for **txt2img**, **img2img** or **process**  
 - FAST!  
   Uses `CV2` and `ONNX` backend and typically executes in <0.1sec  
 
