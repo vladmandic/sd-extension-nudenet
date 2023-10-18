@@ -1,6 +1,6 @@
 import gradio as gr
 from modules import scripts, scripts_postprocessing, processing, images # pylint: disable=import-error
-import nudenet
+import nudenet # pylint: disable=wrong-import-order
 
 
 def create_ui(accordion=True):
@@ -65,5 +65,5 @@ class ScriptPostprocessing(scripts_postprocessing.ScriptPostprocessing):
         enabled, metadata, copy, score, blocks, censor, method, overlay = create_ui(accordion=False)
         return { 'enabled': enabled, 'metadata': metadata, 'copy': copy, 'score': score, 'blocks': blocks, 'censor': censor, 'method': method, 'overlay': overlay }
 
-    def process(self, pp: scripts_postprocessing.PostprocessedImage, enabled, metadata, copy, score, blocks, censor, method, overlay):
+    def process(self, pp: scripts_postprocessing.PostprocessedImage, enabled, metadata, copy, score, blocks, censor, method, overlay): # pylint: disable=arguments-differ
         process(None, pp, enabled, metadata, copy, score, blocks, censor, method, overlay)

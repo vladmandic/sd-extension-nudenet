@@ -24,7 +24,7 @@ labels = [
     "female-vagina",
     "male-breast-bare",
     "anus-bare",
-    "feed-bare",
+    "feet-bare",
     "belly",
     "feet",
     "armpits",
