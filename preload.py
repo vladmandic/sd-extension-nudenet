@@ -1,5 +1,5 @@
 import os
-from modules import paths
+from modules import paths # only modules without dependencies can be imported here as its executed before server start
 
 
 def preload(parser):

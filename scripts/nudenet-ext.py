@@ -53,6 +53,9 @@ def process(p: processing.StableDiffusionProcessing=None, pp: scripts.Postproces
 
 # defines script for dual-mode usage
 class Script(scripts.Script):
+    # see below for all available options and callbacks
+    # <https://github.com/vladmandic/automatic/blob/master/modules/scripts.py#L26>
+
     def title(self):
         return 'NudeNet'
 
