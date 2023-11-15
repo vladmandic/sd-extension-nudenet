@@ -1,8 +1,12 @@
+# built-in imports and third party imports
 import gradio as gr
+# import required modules from sdnext
 from modules import scripts, scripts_postprocessing, processing, images # pylint: disable=import-error
+# import actual nudenet module relative to extension root
 import nudenet # pylint: disable=wrong-import-order
 
 
+# main ui
 def create_ui(accordion=True):
     with gr.Accordion('NudeNet', open = False, elem_id='nudenet') if accordion else gr.Group():
         with gr.Row():
@@ -20,6 +24,8 @@ def create_ui(accordion=True):
             overlay = gr.Textbox(label = 'Overlay', value = '', placeholder = 'Path to image or leave default', interactive=True)
     return [enabled, metadata, copy, score, blocks, censor, method, overlay]
 
+
+# main processing used in both modes
 def process(p: processing.StableDiffusionProcessing=None, pp: scripts.PostprocessImageArgs=None, enabled=True, metadata=True, copy=False, score=0.2, blocks=3, censor=[], method='pixelate', overlay=''):
     if not enabled:
         return
@@ -44,6 +50,8 @@ def process(p: processing.StableDiffusionProcessing=None, pp: scripts.Postproces
             pp.info['NudeNet'] = meta
             pp.info['NSFW'] = nsfw
 
+
+# defines script for dual-mode usage
 class Script(scripts.Script):
     def title(self):
         return 'NudeNet'
@@ -51,19 +59,24 @@ class Script(scripts.Script):
     def show(self, _is_img2img):
         return scripts.AlwaysVisible
 
+    # return signature is array of gradio components
     def ui(self, _is_img2img):
         return create_ui(accordion=True)
 
+    # triggered by callback
     def postprocess_image(self, p: processing.StableDiffusionProcessing, pp: scripts.PostprocessImageArgs, enabled, metadata, copy, score, blocks, censor, method, overlay): # pylint: disable=arguments-differ
         process(p, pp, enabled, metadata, copy, score, blocks, censor, method, overlay)
 
+# defines postprocessing script for dual-mode usage
 class ScriptPostprocessing(scripts_postprocessing.ScriptPostprocessing):
     name = 'NudeNet'
     order = 10000
 
+    # return signature is object with gradio components
     def ui(self):
         enabled, metadata, copy, score, blocks, censor, method, overlay = create_ui(accordion=False)
         return { 'enabled': enabled, 'metadata': metadata, 'copy': copy, 'score': score, 'blocks': blocks, 'censor': censor, 'method': method, 'overlay': overlay }
 
+    # triggered by callback
     def process(self, pp: scripts_postprocessing.PostprocessedImage, enabled, metadata, copy, score, blocks, censor, method, overlay): # pylint: disable=arguments-differ
         process(None, pp, enabled, metadata, copy, score, blocks, censor, method, overlay)
