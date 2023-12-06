@@ -1,7 +1,7 @@
 # built-in imports and third party imports
 import gradio as gr
 # import required modules from sdnext
-from modules import scripts, scripts_postprocessing, processing, images # pylint: disable=import-error
+from modules import scripts, scripts_postprocessing, script_callbacks, processing, images # pylint: disable=import-error
 # import actual nudenet module relative to extension root
 import nudenet # pylint: disable=wrong-import-order
 
@@ -83,3 +83,30 @@ class ScriptPostprocessing(scripts_postprocessing.ScriptPostprocessing):
     # triggered by callback
     def process(self, pp: scripts_postprocessing.PostprocessedImage, enabled, metadata, copy, score, blocks, censor, method, overlay): # pylint: disable=arguments-differ
         process(None, pp, enabled, metadata, copy, score, blocks, censor, method, overlay)
+
+# define api
+def nudenet_api(_, app):
+    from fastapi import Body
+    from modules.api import api
+
+    @app.post("/nudenet")
+    async def nudenet_censor(
+        image: str = Body("", title='nudenet input image'),
+        score: float = Body(0.2, title='nudenet threshold score'),
+        blocks: int = Body(3, title='nudenet pixelation blocks'),
+        censor: list = Body([], title='nudenet censorship items'),
+        method: str = Body('pixelate', title='nudenet censorship method'),
+        overlay: str = Body('', title='nudenet overlay image path'),
+    ):
+        base64image = image
+        image = api.decode_base64_to_image(image)
+        if nudenet.detector is None:
+            nudenet.detector = nudenet.NudeDetector() # loads and initializes model once
+        nudes = nudenet.detector.censor(image=image, method=method, min_score=score, censor=censor, blocks=blocks, overlay=overlay)
+        if len(censor) > 0: # replace image if anything is censored
+            base64image = api.encode_pil_to_base64(nudes.output).decode("utf-8")
+        detections_dict = { d["label"]: d["score"] for d in nudes.detections }
+        return { "image": base64image, "detections": detections_dict }
+
+
+script_callbacks.on_app_started(nudenet_api)
