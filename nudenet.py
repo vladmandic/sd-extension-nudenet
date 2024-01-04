@@ -7,9 +7,7 @@ import time
 import logging
 import cv2
 import numpy as np
-import onnxruntime
 from PIL import Image
-from onnxruntime.capi import _pybind_state as C
 
 
 log = logging.getLogger("sd")
@@ -54,6 +52,9 @@ class NudeResult:
 
 class NudeDetector:
     def __init__(self, providers=None, model=None):
+        import onnxruntime
+        from onnxruntime.capi import _pybind_state as C
+
         global session # pylint: disable=global-statement
         model = model or os.path.join(os.path.dirname(__file__), 'nudenet.onnx')
         if session is None:

@@ -70,6 +70,7 @@ class Script(scripts.Script):
     def postprocess_image(self, p: processing.StableDiffusionProcessing, pp: scripts.PostprocessImageArgs, enabled, metadata, copy, score, blocks, censor, method, overlay): # pylint: disable=arguments-differ
         process(p, pp, enabled, metadata, copy, score, blocks, censor, method, overlay)
 
+
 # defines postprocessing script for dual-mode usage
 class ScriptPostprocessing(scripts_postprocessing.ScriptPostprocessing):
     name = 'NudeNet'
@@ -83,6 +84,7 @@ class ScriptPostprocessing(scripts_postprocessing.ScriptPostprocessing):
     # triggered by callback
     def process(self, pp: scripts_postprocessing.PostprocessedImage, enabled, metadata, copy, score, blocks, censor, method, overlay): # pylint: disable=arguments-differ
         process(None, pp, enabled, metadata, copy, score, blocks, censor, method, overlay)
+
 
 # define api
 def nudenet_api(_, app):

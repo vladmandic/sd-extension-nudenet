@@ -1,10 +1,12 @@
 # sdnext installer
+"""
 import installer
 
 dependencies = ['onnxruntime']
 for dependency in dependencies:
     if not installer.installed(dependency, reload=False, quiet=True):
         installer.install(dependency, ignore=False)
+"""
 
 # a1111 installer
 """
