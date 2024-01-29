@@ -26,29 +26,30 @@ def create_ui(accordion=True):
 
 
 # main processing used in both modes
-def process(p: processing.StableDiffusionProcessing=None, pp: scripts.PostprocessImageArgs=None, enabled=True, metadata=True, copy=False, score=0.2, blocks=3, censor=[], method='pixelate', overlay=''):
+def process(p: processing.StableDiffusionProcessing=None, pp: scripts.PostprocessImageArgs=None, enabled=True, metadata=True, copy=False, score=0.2, blocks=3, censor=[], method='pixelate', overlay=''): # noqa:B006
     if not enabled:
         return
-    if nudenet.detector is None:
-        nudenet.detector = nudenet.NudeDetector() # loads and initializes model once
-    nudes = nudenet.detector.censor(image=pp.image, method=method, min_score=score, censor=censor, blocks=blocks, overlay=overlay)
     if pp is None:
         nudenet.log.error('NudeNet: no image received')
+        return
+    if nudenet.detector is None:
+        nudenet.detector = nudenet.NudeDetector(providers=['CUDAExecutionProvider', 'CPUExecutionProvider']) # loads and initializes model once
+    nudes = nudenet.detector.censor(image=pp.image, method=method, min_score=score, censor=censor, blocks=blocks, overlay=overlay)
     if len(censor) > 0: # replace image if anything is censored
         if not copy:
             pp.image = nudes.output
         else:
             info = processing.create_infotext(p)
             images.save_image(nudes.output, path=p.outpath_samples, seed=p.seed, prompt=p.prompt, info=info, p=p, suffix="-censored")
-    if metadata:
-        meta = '; '.join([f'{d["label"]}:{d["score"]}' for d in nudes.detections]) # add all metadata
-        nsfw = any([d["label"] in nudenet.nsfw for d in nudes.detections])
-        if p is not None:
-            p.extra_generation_params["NudeNet"] = meta
-            p.extra_generation_params["NSFW"] = nsfw
-        if hasattr(pp, 'info'):
-            pp.info['NudeNet'] = meta
-            pp.info['NSFW'] = nsfw
+    meta = '; '.join([f'{d["label"]}:{d["score"]}' for d in nudes.detections]) # add all metadata
+    nsfw = any([d["label"] in nudenet.nsfw for d in nudes.detections]) # noqa:C419
+    if metadata and p is not None:
+        p.extra_generation_params["NudeNet"] = meta
+        p.extra_generation_params["NSFW"] = nsfw
+    if metadata and hasattr(pp, 'info'):
+        pp.info['NudeNet'] = meta
+        pp.info['NSFW'] = nsfw
+    nudenet.log.debug(f'NudeNet: meta={meta} nsfw={nsfw}')
 
 
 # defines script for dual-mode usage
@@ -96,7 +97,7 @@ def nudenet_api(_, app):
         image: str = Body("", title='nudenet input image'),
         score: float = Body(0.2, title='nudenet threshold score'),
         blocks: int = Body(3, title='nudenet pixelation blocks'),
-        censor: list = Body([], title='nudenet censorship items'),
+        censor: list = Body([], title='nudenet censorship items'), # noqa:B008
         method: str = Body('pixelate', title='nudenet censorship method'),
         overlay: str = Body('', title='nudenet overlay image path'),
     ):

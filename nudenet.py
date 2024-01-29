@@ -58,6 +58,7 @@ class NudeDetector:
         global session # pylint: disable=global-statement
         model = model or os.path.join(os.path.dirname(__file__), 'nudenet.onnx')
         if session is None:
+            log.info(f'NudeNet load: model={model} providers={providers}')
             session = onnxruntime.InferenceSession(model, providers=C.get_available_providers() if not providers else providers) # pylint: disable=no-member
         model_inputs = session.get_inputs()
         self.input_width = model_inputs[0].shape[2] # 320
@@ -168,9 +169,13 @@ class NudeDetector:
         return background
 
     def detect(self, image, min_score):
-        preprocessed_image, resize_factor, pad_left, pad_top = self.read_image(image, self.input_width)
-        outputs = session.run(None, {self.input_name: preprocessed_image})
-        res = self.postprocess(outputs, resize_factor, pad_left, pad_top, min_score)
+        try:
+            preprocessed_image, resize_factor, pad_left, pad_top = self.read_image(image, self.input_width)
+            outputs = session.run(None, {self.input_name: preprocessed_image})
+            res = self.postprocess(outputs, resize_factor, pad_left, pad_top, min_score)
+        except Exception as e:
+            log.error(f'NudeNet: {e}')
+            return []
         return res
 
     def censor(self, image, min_score=0.2, censor=None, method='pixelate', blocks=3, overlay=None):
@@ -183,7 +188,6 @@ class NudeDetector:
         nude.detections = self.detect(image, min_score)
         nude.censored = [d for d in nude.detections if d["label"] in nude.censor]
         for d in nude.censored:
-            # try:
             box = d["box"]
             x, y, w, h = box[0], box[1], box[2], box[3]
             area = image[y: y+h, x: x+w]
@@ -206,8 +210,6 @@ class NudeDetector:
                 pasty = cv2.imread(overlay, cv2.IMREAD_UNCHANGED)
                 pasty = cv2.resize(pasty, (w, h))
                 image = self.overlay(image, pasty, x, y)
-            # except Exception as e:
-            #    log.error(f'NudeNet censor function: {e}')
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         nude.output = Image.fromarray(image)
         return nude
@@ -222,7 +224,7 @@ def cli():
         t0 = time.time()
         pil = Image.open(fn)
         if detector is None:
-            detector = NudeDetector()
+            detector = NudeDetector(providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
         nudes = detector.censor(image=pil, censor=['female breast bare', 'female genitalia bare'], min_score=0.2, method='pixelate')
         t1 = time.time()
         log.info(vars(nudes))
