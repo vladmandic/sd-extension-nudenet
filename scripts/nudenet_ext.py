@@ -35,7 +35,7 @@ def process(p: processing.StableDiffusionProcessing=None, pp: scripts.Postproces
     if nudenet.detector is None:
         nudenet.detector = nudenet.NudeDetector(providers=['CUDAExecutionProvider', 'CPUExecutionProvider']) # loads and initializes model once
     nudes = nudenet.detector.censor(image=pp.image, method=method, min_score=score, censor=censor, blocks=blocks, overlay=overlay)
-    if len(censor) > 0: # replace image if anything is censored
+    if len(nudes.censored) > 0:  # Check if there are any censored areas
         if not copy:
             pp.image = nudes.output
         else:
