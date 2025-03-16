@@ -4,52 +4,103 @@ import gradio as gr
 from modules import scripts, scripts_postprocessing, script_callbacks, processing, images # pylint: disable=import-error
 # import actual nudenet module relative to extension root
 import nudenet # pylint: disable=wrong-import-order
+import langdetect # pylint: disable=wrong-import-order
+import imageguard # pylint: disable=wrong-import-order
 
 
 # main ui
 def create_ui(accordion=True):
     with gr.Accordion('NudeNet', open = False, elem_id='nudenet') if accordion else gr.Group():
         with gr.Row():
-            enabled = gr.Checkbox(label = 'Enabled', value = False)
-            metadata = gr.Checkbox(label = 'Metadata', value = True)
+            enabled = gr.Checkbox(label = 'Enable censor', value = False)
+            lang = gr.Checkbox(label = 'Check language', value = False)
+            policy = gr.Checkbox(label = 'Policy check', value = False)
+        with gr.Row():
+            metadata = gr.Checkbox(label = 'Add metadata', value = True)
             copy = gr.Checkbox(label = 'Save as copy', value = False)
-        with gr.Row():
-            score = gr.Slider(label = 'Sensitivity', value = 0.2, mininimum = 0, maximum = 1, step = 0.01, interactive=True)
-            blocks = gr.Slider(label = 'Block size', value = 3, minimum = 1, maximum = 10, step = 1, interactive=True)
-        with gr.Row():
-            censor = gr.Dropdown(label = 'Censor', value = [], choices = sorted(nudenet.labels), multiselect=True, interactive=True)
-        with gr.Row():
-            method = gr.Dropdown(label = 'Method', value = 'pixelate', choices = ['none', 'pixelate', 'blur', 'image', 'block'], interactive=True)
-        with gr.Row():
-            overlay = gr.Textbox(label = 'Overlay', value = '', placeholder = 'Path to image or leave default', interactive=True)
-    return [enabled, metadata, copy, score, blocks, censor, method, overlay]
+        with gr.Group(visible=True):
+            with gr.Row():
+                score = gr.Slider(label = 'Sensitivity', value = 0.2, mininimum = 0, maximum = 1, step = 0.01, interactive=True)
+                blocks = gr.Slider(label = 'Block size', value = 3, minimum = 1, maximum = 10, step = 1, interactive=True)
+            with gr.Row():
+                censor = gr.Dropdown(label = 'Censor', value = [], choices = sorted(nudenet.labels), multiselect=True, interactive=True)
+                method = gr.Dropdown(label = 'Method', value = 'pixelate', choices = ['none', 'pixelate', 'blur', 'image', 'block'], interactive=True)
+            with gr.Row():
+                overlay = gr.Textbox(label = 'Overlay', value = '', placeholder = 'Path to image or leave default', interactive=True)
+        with gr.Group(visible=True):
+            with gr.Row():
+                allowed = gr.Textbox(label = 'Allowed languages', value = 'eng', placeholder = 'Comma separated list of allowed languages', interactive=True)
+                alphabet = gr.Textbox(label = 'Allowed alphabets', value = 'latn', placeholder = 'Comma separated list of allowed alphabets', interactive=True)
+    return [enabled, lang, policy, metadata, copy, score, blocks, censor, method, overlay, allowed, alphabet]
 
 
 # main processing used in both modes
-def process(p: processing.StableDiffusionProcessing=None, pp: scripts.PostprocessImageArgs=None, enabled=True, metadata=True, copy=False, score=0.2, blocks=3, censor=[], method='pixelate', overlay=''): # noqa:B006
-    if not enabled:
-        return
-    if pp is None:
-        nudenet.log.error('NudeNet: no image received')
-        return
-    if nudenet.detector is None:
-        nudenet.detector = nudenet.NudeDetector(providers=['CUDAExecutionProvider', 'CPUExecutionProvider']) # loads and initializes model once
-    nudes = nudenet.detector.censor(image=pp.image, method=method, min_score=score, censor=censor, blocks=blocks, overlay=overlay)
-    if len(nudes.censored) > 0:  # Check if there are any censored areas
-        if not copy:
-            pp.image = nudes.output
-        else:
-            info = processing.create_infotext(p)
-            images.save_image(nudes.output, path=p.outpath_samples, seed=p.seed, prompt=p.prompt, info=info, p=p, suffix="-censored")
-    meta = '; '.join([f'{d["label"]}:{d["score"]}' for d in nudes.detections]) # add all metadata
-    nsfw = any([d["label"] in nudenet.nsfw for d in nudes.detections]) # noqa:C419
-    if metadata and p is not None:
-        p.extra_generation_params["NudeNet"] = meta
-        p.extra_generation_params["NSFW"] = nsfw
-    if metadata and hasattr(pp, 'info'):
-        pp.info['NudeNet'] = meta
-        pp.info['NSFW'] = nsfw
-    nudenet.log.debug(f'NudeNet: meta={meta} nsfw={nsfw}')
+def process(
+        p: processing.StableDiffusionProcessing=None,
+        pp: scripts.PostprocessImageArgs=None,
+        enabled=True,
+        lang=False,
+        policy=False,
+        metadata=True,
+        copy=False,
+        score=0.2,
+        blocks=3,
+        censor=[],
+        method='pixelate',
+        overlay='',
+        allowed='eng',
+        alphabet='latn',
+    ):
+    from modules.shared import state, log
+    if enabled:
+        if pp is None:
+            return
+        if nudenet.detector is None:
+            nudenet.detector = nudenet.NudeDetector(providers=['CUDAExecutionProvider', 'CPUExecutionProvider']) # loads and initializes model once
+        nudes = nudenet.detector.censor(image=pp.image, method=method, min_score=score, censor=censor, blocks=blocks, overlay=overlay)
+        if len(nudes.censored) > 0:  # Check if there are any censored areas
+            if not copy:
+                pp.image = nudes.output
+            else:
+                info = processing.create_infotext(p)
+                images.save_image(nudes.output, path=p.outpath_samples, seed=p.seed, prompt=p.prompt, info=info, p=p, suffix="-censored")
+        meta = '; '.join([f'{d["label"]}:{d["score"]}' for d in nudes.detections]) # add all metadata
+        nsfw = any([d["label"] in nudenet.nsfw for d in nudes.detections]) # noqa:C419
+        if metadata and p is not None:
+            p.extra_generation_params["NudeNet"] = meta
+            p.extra_generation_params["NSFW"] = nsfw
+        if metadata and hasattr(pp, 'info'):
+            pp.info['NudeNet'] = meta
+            pp.info['NSFW'] = nsfw
+        log.debug(f'NudeNet: meta={meta} nsfw={nsfw}')
+    if lang:
+        if p is None:
+            return
+        prompts = '.\n'.join(p.all_prompts) if p.all_prompts else p.prompt
+        allowed = [a.strip() for a in allowed.split(',')] if allowed else []
+        alphabet = [a.strip() for a in alphabet.split(',')] if alphabet else []
+        res = langdetect.lang_detect(prompts)
+        res = ','.join(res) if isinstance(res, list) else res
+        if len(allowed) > 0:
+            if not any(a in res for a in allowed):
+                log.error(f'NudeNet: lang={res} allowed={allowed} not allowed')
+                state.interrupted = True
+        if len(alphabet) > 0:
+            if not any(a in res for a in alphabet):
+                log.error(f'NudeNet: alphabet={res} allowed={alphabet} not allowed')
+                state.interrupted = True
+        if metadata and p is not None:
+            p.extra_generation_params["Lang"] = res
+    if policy:
+        if pp is None:
+            return
+        res = imageguard.image_guard(image=pp.image)
+        if metadata and p is not None:
+            p.extra_generation_params["Rating"] = res.get('rating', 'N/A')
+            p.extra_generation_params["Category"] = res.get('category', 'N/A')
+        if metadata and hasattr(pp, 'info'):
+            pp.info["Rating"] = res.get('rating', 'N/A')
+            pp.info["Category"] = res.get('category', 'N/A')
 
 
 # defines script for dual-mode usage
@@ -68,8 +119,12 @@ class Script(scripts.Script):
         return create_ui(accordion=True)
 
     # triggered by callback
-    def postprocess_image(self, p: processing.StableDiffusionProcessing, pp: scripts.PostprocessImageArgs, enabled, metadata, copy, score, blocks, censor, method, overlay): # pylint: disable=arguments-differ
-        process(p, pp, enabled, metadata, copy, score, blocks, censor, method, overlay)
+    def before_process(self, p: processing.StableDiffusionProcessing, enabled, lang, policy, metadata, copy, score, blocks, censor, method, overlay, allowed, alphabet): # pylint: disable=arguments-differ
+        process(p, None, enabled, lang, policy, metadata, copy, score, blocks, censor, method, overlay, allowed, alphabet)
+
+    # triggered by callback
+    def postprocess_image(self, p: processing.StableDiffusionProcessing, pp: scripts.PostprocessImageArgs, enabled, lang, policy, metadata, copy, score, blocks, censor, method, overlay, allowed, alphabet): # pylint: disable=arguments-differ
+        process(p, pp, enabled, lang, policy, metadata, copy, score, blocks, censor, method, overlay, allowed, alphabet)
 
 
 # defines postprocessing script for dual-mode usage
@@ -79,12 +134,12 @@ class ScriptPostprocessing(scripts_postprocessing.ScriptPostprocessing):
 
     # return signature is object with gradio components
     def ui(self):
-        enabled, metadata, copy, score, blocks, censor, method, overlay = create_ui(accordion=False)
-        return { 'enabled': enabled, 'metadata': metadata, 'copy': copy, 'score': score, 'blocks': blocks, 'censor': censor, 'method': method, 'overlay': overlay }
+        enabled, lang, policy, metadata, copy, score, blocks, censor, method, overlay, allowed, alphabet = create_ui(accordion=False)
+        return { 'enabled': enabled, 'lang': lang, 'policy': policy, 'metadata': metadata, 'copy': copy, 'score': score, 'blocks': blocks, 'censor': censor, 'method': method, 'overlay': overlay, 'allowed': allowed, 'alphabet': alphabet}
 
     # triggered by callback
-    def process(self, pp: scripts_postprocessing.PostprocessedImage, enabled, metadata, copy, score, blocks, censor, method, overlay): # pylint: disable=arguments-differ
-        process(None, pp, enabled, metadata, copy, score, blocks, censor, method, overlay)
+    def process(self, pp: scripts_postprocessing.PostprocessedImage, enabled, lang, policy, metadata, copy, score, blocks, censor, method, overlay, allowed, alphabet): # pylint: disable=arguments-differ
+        process(None, pp, enabled, lang, policy, metadata, copy, score, blocks, censor, method, overlay, allowed, alphabet)
 
 
 # define api
@@ -97,7 +152,7 @@ def nudenet_api(_, app):
         image: str = Body("", title='nudenet input image'),
         score: float = Body(0.2, title='nudenet threshold score'),
         blocks: int = Body(3, title='nudenet pixelation blocks'),
-        censor: list = Body([], title='nudenet censorship items'), # noqa:B008
+        censor: list = Body([], title='nudenet censorship items'),
         method: str = Body('pixelate', title='nudenet censorship method'),
         overlay: str = Body('', title='nudenet overlay image path'),
     ):
@@ -110,6 +165,28 @@ def nudenet_api(_, app):
             base64image = api.encode_pil_to_base64(nudes.output).decode("utf-8")
         detections_dict = { d["label"]: d["score"] for d in nudes.detections }
         return { "image": base64image, "detections": detections_dict }
+
+    @app.post("/prompt-check")
+    async def prompt_check(
+        prompt: str = Body("", title='prompt text'),
+        lang: str = Body("eng", title='allowed languages'),
+        alphabet: str = Body("latn", title='allowed alphabets'),
+    ):
+        res = langdetect.lang_detect(prompt)
+        res = ','.join(res) if isinstance(res, list) else res
+        lang = [a.strip() for a in lang.split(',')] if lang else []
+        alphabet = [a.strip() for a in alphabet.split(',')] if alphabet else []
+        lang_ok = any(a in res for a in lang) if len(lang) > 0 else True
+        alph_ok = any(a in res for a in alphabet) if len(alphabet) > 0 else True
+        return { "lang": res, "lang_ok": lang_ok, "alph_ok": alph_ok }
+
+    @app.post("/image-guard")
+    async def image_guard(
+        image: str = Body("", title='input image'),
+    ):
+        image = api.decode_base64_to_image(image)
+        res = imageguard.image_guard(image=image)
+        return res
 
 
 script_callbacks.on_app_started(nudenet_api)
