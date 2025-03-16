@@ -46,6 +46,14 @@ For example:
 }
 ```
 
+### Banned Words
+
+If **Banned words** check is enabled, NudeNet will use `regex` to check prompt variations if they contain any banned words or expressions.
+For example:
+```log
+BannedWords: ['naked']
+```
+
 ## Settings
 
 Should be self-explanatory...
