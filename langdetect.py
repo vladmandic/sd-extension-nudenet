@@ -16,7 +16,7 @@ def lang_detect(text:str, top:int=1, threshold:float=0.25) -> str:
             model = fasttext.load_model(model_path)
         text = text.replace('\n', '. ')
         lang, score = model.predict(text, k=top, threshold=threshold, on_unicode_error="ignore")
-        result = [f"{l.replace("__label__", "").lower()}:{s:.2f}" for l, s in zip(lang, score) if s > threshold][:top]
+        result = [f'{l.replace("__label__", "").lower()}:{s:.2f}' for l, s in zip(lang, score) if s > threshold][:top]
         shared.log.debug(f'NudeNet LangDetect: {result}')
         return result
     except Exception as e:
