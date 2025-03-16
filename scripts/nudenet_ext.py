@@ -10,15 +10,16 @@ import imageguard # pylint: disable=wrong-import-order
 
 # main ui
 def create_ui(accordion=True):
+    def update_ui(checked):
+        return gr.update(visible=checked)
+
     with gr.Accordion('NudeNet', open = False, elem_id='nudenet') if accordion else gr.Group():
         with gr.Row():
             enabled = gr.Checkbox(label = 'Enable censor', value = False)
-            lang = gr.Checkbox(label = 'Check language', value = False)
-            policy = gr.Checkbox(label = 'Policy check', value = False)
         with gr.Row():
             metadata = gr.Checkbox(label = 'Add metadata', value = True)
             copy = gr.Checkbox(label = 'Save as copy', value = False)
-        with gr.Group(visible=True):
+        with gr.Group(visible=False) as gr_censor:
             with gr.Row():
                 score = gr.Slider(label = 'Sensitivity', value = 0.2, mininimum = 0, maximum = 1, step = 0.01, interactive=True)
                 blocks = gr.Slider(label = 'Block size', value = 3, minimum = 1, maximum = 10, step = 1, interactive=True)
@@ -27,10 +28,16 @@ def create_ui(accordion=True):
                 method = gr.Dropdown(label = 'Method', value = 'pixelate', choices = ['none', 'pixelate', 'blur', 'image', 'block'], interactive=True)
             with gr.Row():
                 overlay = gr.Textbox(label = 'Overlay', value = '', placeholder = 'Path to image or leave default', interactive=True)
-        with gr.Group(visible=True):
+        with gr.Row():
+            lang = gr.Checkbox(label = 'Check language', value = False)
+        with gr.Group(visible=False) as gr_lang:
             with gr.Row():
                 allowed = gr.Textbox(label = 'Allowed languages', value = 'eng', placeholder = 'Comma separated list of allowed languages', interactive=True)
                 alphabet = gr.Textbox(label = 'Allowed alphabets', value = 'latn', placeholder = 'Comma separated list of allowed alphabets', interactive=True)
+        with gr.Row():
+            policy = gr.Checkbox(label = 'Check policy violations', value = False)
+        enabled.change(fn=update_ui, inputs=[enabled], outputs=[gr_censor])
+        lang.change(fn=update_ui, inputs=[lang], outputs=[gr_lang])
     return [enabled, lang, policy, metadata, copy, score, blocks, censor, method, overlay, allowed, alphabet]
 
 
@@ -72,7 +79,7 @@ def process(
         if metadata and hasattr(pp, 'info'):
             pp.info['NudeNet'] = meta
             pp.info['NSFW'] = nsfw
-        log.debug(f'NudeNet: meta={meta} nsfw={nsfw}')
+        log.debug(f'NudeNet detect: {meta} nsfw={nsfw}')
     if lang:
         if p is None:
             return
@@ -183,9 +190,10 @@ def nudenet_api(_, app):
     @app.post("/image-guard")
     async def image_guard(
         image: str = Body("", title='input image'),
+        policy: str = Body("", title='optional policy definition'),
     ):
         image = api.decode_base64_to_image(image)
-        res = imageguard.image_guard(image=image)
+        res = imageguard.image_guard(image=image, policy=policy)
         return res
 
 

@@ -58,7 +58,7 @@ class NudeDetector:
         global session # pylint: disable=global-statement
         model = model or os.path.join(os.path.dirname(__file__), 'nudenet.onnx')
         if session is None:
-            log.info(f'NudeNet load: model={model} providers={providers}')
+            log.info(f'NudeNet load: model="{model}" providers={providers}')
             session = onnxruntime.InferenceSession(model, providers=C.get_available_providers() if not providers else providers) # pylint: disable=no-member
         model_inputs = session.get_inputs()
         self.input_width = model_inputs[0].shape[2] # 320
