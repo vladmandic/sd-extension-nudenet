@@ -153,7 +153,7 @@ class ScriptPostprocessing(scripts_postprocessing.ScriptPostprocessing):
 
     # return signature is object with gradio components
     def ui(self):
-        enabled, lang, policy, banned, metadata, copy, score, blocks, censor, method, overlay, allowed, alphabet, words = create_ui(accordion=False)
+        enabled, lang, policy, banned, metadata, copy, score, blocks, censor, method, overlay, allowed, alphabet, words = create_ui(accordion=True)
         return { 'enabled': enabled, 'lang': lang, 'policy': policy, 'banned': banned, 'metadata': metadata, 'copy': copy, 'score': score, 'blocks': blocks, 'censor': censor, 'method': method, 'overlay': overlay, 'allowed': allowed, 'alphabet': alphabet, 'words': words}
 
     # triggered by callback
